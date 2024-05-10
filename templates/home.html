@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech-to-Text</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: right; 
+        }
+        .main {
+            display: flex;
+            justify-content: space-between; /* Align inner divs horizontally */
+        }
+        #ai-agent {
+            text-align: center;
+            margin-left:400px;
+            margin-bottom: 20px; 
+        }
+        button {
+            background-color: red; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none;
+            border-radius: 5px; 
+            cursor: pointer; 
+        }
+        img{
+            height:300px;
+            width:300px;
+        }
+        /* Styling the scrollbar */
+        #chat-container {
+            width: 500px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-right: 20px;
+            background-color: #D9D9D9;
+            border: solid #D9D9D9 1px;
+            border-radius: 50px;
+            height:500px;
+        }
+        #chat{
+            overflow-y: auto; 
+            max-height: 400px;
+        }
+
+        #chat::-webkit-scrollbar-track {
+            background-color: #f1f1f1; 
+        }
+
+        #chat::-webkit-scrollbar-thumb {
+            background-color: #888; 
+            border-radius: 1px;
+            width: 2px; 
+        }
+
+        #chat::-webkit-scrollbar-thumb:hover {
+            background: #555; 
+        }
+        #chat::-webkit-scrollbar-button {
+            display: none;
+        }
+        .chat-message {
+            padding-top:10px;
+            padding-left:10px;
+            padding-right:10px;
+            background-color: white;
+            border: solid #D9D9D9 1px;
+            border-radius: 50px;
+            margin-bottom: 10px;
+            height: 60px;
+        }
+        
+        .chat-message p {
+            font-size: 18px; /* Adjust the font size as needed */
+            margin: 0; /* Remove default margin */
+        }
+    </style>
+    {% load static %}
+</head>
+<body>
+    <div class="main">
+        <div id="ai-agent">
+            <h1>AI Agent</h1>
+            <img class="pic" src="{% static 'agent1.png' %}" alt="Image Description">
+            <p id="status"></p>
+            <button id="hangup">Hangup</button>
+
+        </div>
+        <div id="chat-container">
+            <h1>Chat</h1>
+            <div id ="chat"> 
+
+            </div>
+        </div>
+    </div>
+    
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const statusParagraph = document.querySelector('p');
+            const chatContainer = document.getElementById('chat');
+            const hangupButton = document.getElementById('hangup');
+            const waitingForResponse = [
+            "Waiting For response...",
+            "Please wait...",
+            "I might take a while...",
+            "getting response...",
+            "wait for a while...",
+            "Will be back in a minute...",
+            "Hoping for a swift response...",
+            "Waiting for confirmation...",
+            "Still awaiting feedback...",
+            "Hoping for a quick response...",
+            ];
+            let isRecording = false;
+        
+            hangupButton.addEventListener('click', () => {
+                isRecording = false;
+            });function appendMessage(message, isUser) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('chat-message');
+                messageDiv.textContent = message;
+                
+                if (isUser) {
+                    messageDiv.style.textAlign = 'left';
+                } else {
+                    messageDiv.style.textAlign = 'right';
+                  /*  const likeButton = document.createElement('button');
+                    likeButton.textContent = 'Like';
+                    likeButton.classList.add('like-button');
+                    likeButton.addEventListener('click', () => {
+                        likedAnswer = message;
+                        console.log('Liked:', likedAnswer);
+                        updateFeedback('good', message); // Assuming feedback is 'good' when liked
+                    });
+            
+                    const dislikeButton = document.createElement('button');
+                    dislikeButton.textContent = 'Dislike';
+                    dislikeButton.classList.add('dislike-button');
+                    dislikeButton.addEventListener('click', () => {
+                        updateFeedback('bad', message);
+                        console.log('Disliked:', message);
+                    });
+            
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.appendChild(likeButton);
+                    buttonContainer.appendChild(dislikeButton);
+            
+                    messageDiv.appendChild(buttonContainer);*/
+                }
+                chatContainer.appendChild(messageDiv);
+            }
+            
+            function updateFeedback(feedback, answer) {
+                fetch('http://127.0.0.1:8000/update_feedback/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        feedback: feedback,
+                        answer: answer
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Feedback updated:', data);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            }
+            
+            function checkcache(query) {
+                fetch('http://127.0.0.1:5000/api/query_cache', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ input_text: query })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.output) {
+                        const convertedText = data.output;
+                        console.log('Converted Text:', convertedText);
+                        speak(convertedText);
+                        //convertText(query)
+                    } else {
+                        console.log("Answer not found in cache.");
+                        convertText(query)
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    convertText(query)
+                });
+            }
+            function convertText(query) {
+                randomMessage = waitingForResponse[Math.floor(Math.random() * waitingForResponse.length)];
+                say(randomMessage);
+                statusParagraph.innerHTML =randomMessage;
+                console.log("Converting...");
+                console.log(query);
+
+                // Perform text conversion using the provided query
+                fetch('http://127.0.0.1:3000/generate-response', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ input_text: query })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Set the converted text to a variable
+                    const convertedText = data.response;
+                    // Log the converted text
+                    console.log('Converted Text:', convertedText);
+                    // Speak the converted text
+                    speak(convertedText);
+                })
+                .catch(error => {
+                    // Log any errors that occur during the conversion process
+                    console.error('Error:', error);
+                    // Continue with transcription if conversion fails
+                    transcribe();
+                });
+            }
+            function startRecording() {
+                isRecording = true;
+                speak("This is your AI assistant, How can I help you?");
+            }
+            function transcribe() {
+                if (!isRecording) return;
+                setTimeout(1000);
+                statusParagraph.innerHTML ="Listening....";
+                fetch('/takeCommand/', {
+                    method: 'POST',
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.query) {
+                        console.log(data.query);
+                        appendMessage(data.query, true);
+                        checkcache(data.query);
+                        
+                    } else {
+                        console.error('Error:', data.message);
+                        say("cannot hear you");
+                        transcribe();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error.message);
+                });
+            }
+            function say(text)
+            {
+                fetch('/say/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        console.log('Audio generated successfully.');
+                    } else {
+                        console.error('Error:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error.message);
+                });
+            }
+            function speak(text) {
+                statusParagraph.innerHTML ="Speaking....";
+                console.log(text);
+                appendMessage(text, false);
+                fetch('/say/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        console.log('Audio generated successfully.');
+                        transcribe();
+                    } else {
+                        console.error('Error:', data.message);
+                        transcribe();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error.message);
+                });
+            }     
+            startRecording();
+        });
+        
+    </script>
+</body>
+</html>
